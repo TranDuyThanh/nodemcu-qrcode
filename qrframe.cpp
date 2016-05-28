@@ -1,0 +1,440 @@
+// I have put an #ifdef/#else/#endif around this code. The code in the #else
+// part is the output from the dofbit sketch.
+// The code in the #ifdef is the original which requires a lot more ram than
+// a NANO can spare but if you are running this on a larger processor you can
+// use this and save having to run dofbit at all.
+
+#ifdef NOTDEF
+// Need a lot of ram for this version
+#include <string.h>
+#include <stdlib.h>
+
+#ifndef __AVR__
+#define PROGMEM
+#define memcpy_P memcpy
+#define __LPM(x) *x
+#define pgm_read_word(x) *x
+#else
+#include <avr/pgmspace.h>
+#endif
+
+unsigned char *framebase;
+unsigned char *framask;
+unsigned char *rlens;
+unsigned char VERSION;
+unsigned char WD, WDB;          // filled in from verison by initframe
+
+#define QRBIT(x,y) ( ( framebase[((x)>>3) + (y) * WDB] >> (7-((x) & 7 ))) & 1 )
+#define SETQRBIT(x,y) framebase[((x)>>3) + (y) * WDB] |= 0x80 >> ((x) & 7)
+
+static void setmask(unsigned char x, unsigned char y)
+{
+    unsigned bt;
+    if (x > y) {
+        bt = x;
+        x = y;
+        y = bt;
+    }
+    // y*y = 1+3+5...
+    bt = y;
+    bt *= y;
+    bt += y;
+    bt >>= 1;
+    bt += x;
+    framask[bt >> 3] |= 0x80 >> (bt & 7);
+}
+
+static void putfind()
+{
+    unsigned char j, i, k, t;
+    for (t = 0; t < 3; t++) {
+        k = 0;
+        i = 0;
+        if (t == 1)
+            k = (WD - 7);
+        if (t == 2)
+            i = (WD - 7);
+        SETQRBIT(i + 3, k + 3);
+        for (j = 0; j < 6; j++) {
+            SETQRBIT(i + j, k);
+            SETQRBIT(i, k + j + 1);
+            SETQRBIT(i + 6, k + j);
+            SETQRBIT(i + j + 1, k + 6);
+        }
+        for (j = 1; j < 5; j++) {
+            setmask(i + j, k + 1);
+            setmask(i + 1, k + j + 1);
+            setmask(i + 5, k + j);
+            setmask(i + j + 1, k + 5);
+        }
+        for (j = 2; j < 4; j++) {
+            SETQRBIT(i + j, k + 2);
+            SETQRBIT(i + 2, k + j + 1);
+            SETQRBIT(i + 4, k + j);
+            SETQRBIT(i + j + 1, k + 4);
+        }
+    }
+}
+
+static void putalign(int x, int y)
+{
+    int j;
+
+    SETQRBIT(x, y);
+    for (j = -2; j < 2; j++) {
+        SETQRBIT(x + j, y - 2);
+        SETQRBIT(x - 2, y + j + 1);
+        SETQRBIT(x + 2, y + j);
+        SETQRBIT(x + j + 1, y + 2);
+    }
+    for (j = 0; j < 2; j++) {
+        setmask(x - 1, y + j);
+        setmask(x + 1, y - j);
+        setmask(x - j, y - 1);
+        setmask(x + j, y + 1);
+    }
+}
+
+static const unsigned char adelta[41] PROGMEM = {
+    0, 11, 15, 19, 23, 27, 31,  // force 1 pat
+    16, 18, 20, 22, 24, 26, 28, 20, 22, 24, 24, 26, 28, 28, 22, 24, 24,
+    26, 26, 28, 28, 24, 24, 26, 26, 26, 28, 28, 24, 26, 26, 26, 28, 28,
+};
+
+static void doaligns(void)
+{
+    unsigned char delta, x, y;
+    if (VERSION < 2)
+        return;
+    delta = __LPM(&adelta[VERSION]);
+    y = WD - 7;
+    for (;;) {
+        x = WD - 7;
+        while (x > delta - 3U) {
+            putalign(x, y);
+            if (x < delta)
+                break;
+            x -= delta;
+        }
+        if (y <= delta + 9U)
+            break;
+        y -= delta;
+        putalign(6, y);
+        putalign(y, 6);
+    }
+}
+
+static const unsigned vpat[] PROGMEM = {
+    0xc94, 0x5bc, 0xa99, 0x4d3, 0xbf6, 0x762, 0x847, 0x60d,
+    0x928, 0xb78, 0x45d, 0xa17, 0x532, 0x9a6, 0x683, 0x8c9,
+    0x7ec, 0xec4, 0x1e1, 0xfab, 0x08e, 0xc1a, 0x33f, 0xd75,
+    0x250, 0x9d5, 0x6f0, 0x8ba, 0x79f, 0xb0b, 0x42e, 0xa64,
+    0x541, 0xc69
+};
+
+static void putvpat(void)
+{
+    unsigned char vers = VERSION;
+    unsigned char x, y, bc;
+    unsigned verinfo;
+    if (vers < 7)
+        return;
+    verinfo = pgm_read_word(&vpat[vers - 7]);
+
+    bc = 17;
+    for (x = 0; x < 6; x++)
+        for (y = 0; y < 3; y++, bc--)
+            if (1 & (bc > 11 ? vers >> (bc - 12) : verinfo >> bc)) {
+                SETQRBIT(5 - x, 2 - y + WD - 11);
+                SETQRBIT(2 - y + WD - 11, 5 - x);
+            } else {
+                setmask(5 - x, 2 - y + WD - 11);
+                setmask(2 - y + WD - 11, 5 - x);
+            }
+}
+
+void initframe()
+{
+    unsigned x, y;
+//>>> PAH add cast to next 3 statements 
+    framebase = (unsigned char *)calloc(WDB * WD, 1);
+    framask = (unsigned char *)calloc(((WD * (WD + 1) / 2) + 7) / 8, 1);
+    rlens = (unsigned char *)malloc(WD + 1);
+    // finders
+    putfind();
+    // alignment blocks
+    doaligns();
+    // single black
+    SETQRBIT(8, WD - 8);
+    // timing gap - masks only
+    for (y = 0; y < 7; y++) {
+        setmask(7, y);
+        setmask(WD - 8, y);
+        setmask(7, y + WD - 7);
+    }
+    for (x = 0; x < 8; x++) {
+        setmask(x, 7);
+        setmask(x + WD - 8, 7);
+        setmask(x, WD - 8);
+    }
+    // reserve mask-format area
+    for (x = 0; x < 9; x++)
+        setmask(x, 8);
+    for (x = 0; x < 8; x++) {
+        setmask(x + WD - 8, 8);
+        setmask(8, x);
+    }
+    for (y = 0; y < 7; y++)
+        setmask(8, y + WD - 7);
+    // timing
+    for (x = 0; x < WD - 14; x++)
+        if (x & 1) {
+            setmask(8 + x, 6);
+            setmask(6, 8 + x);
+        } else {
+            SETQRBIT(8 + x, 6);
+            SETQRBIT(6, 8 + x);
+        }
+
+    // version block
+    putvpat();
+    for (y = 0; y < WD; y++)
+        for (x = 0; x <= y; x++)
+            if (QRBIT(x, y))
+                setmask(x, y);
+}
+
+void freeframe() {
+    free( framebase );
+    free( framask );
+    free( rlens );
+}
+
+unsigned char *strinbuf;
+unsigned char *qrframe;
+unsigned char ECCLEVEL;
+unsigned char neccblk1;
+unsigned char neccblk2;
+unsigned char datablkw;
+unsigned char eccblkwid;
+
+#ifndef __AVR__
+#define PROGMEM
+#define memcpy_P memcpy
+#define __LPM(x) *x
+#else
+#include <avr/pgmspace.h>
+#endif
+
+#include "ecctable.h"
+
+unsigned initecc(unsigned char ecc, unsigned char vers)
+{
+    VERSION = vers;
+    WD = 17 + 4 * vers;
+    WDB = (WD + 7) / 8;
+
+    unsigned fsz = WD * WDB;
+    if (fsz < 768)              // for ECC math buffers
+        fsz = 768;
+    qrframe = (unsigned char *)malloc(fsz);
+
+    ECCLEVEL = ecc;
+    unsigned eccindex = (ecc - 1) * 4 + (vers - 1) * 16;
+
+    neccblk1 = eccblocks[eccindex++];
+    neccblk2 = eccblocks[eccindex++];
+    datablkw = eccblocks[eccindex++];
+    eccblkwid = eccblocks[eccindex++];
+
+    if (fsz < datablkw + (datablkw + eccblkwid) * (neccblk1 + neccblk2) + neccblk2)
+        fsz = datablkw + (datablkw + eccblkwid) * (neccblk1 + neccblk2) + neccblk2;
+    strinbuf = (unsigned char *)malloc(fsz);
+    return datablkw * (neccblk1 + neccblk2) + neccblk2 - 3;     //-2 if vers <= 9!
+}
+
+unsigned initeccsize(unsigned char ecc, unsigned size)
+{
+    unsigned eccindex;
+    unsigned char vers;
+    for( vers = 1 ; vers < 40; vers++ ) {
+        eccindex = (ecc - 1) * 4 + (vers - 1) * 16;
+        neccblk1 = eccblocks[eccindex++];
+        neccblk2 = eccblocks[eccindex++];
+        datablkw = eccblocks[eccindex++];
+        if( size < datablkw * (neccblk1 + neccblk2) + neccblk2 - 3 )
+            break;
+    }
+    return initecc( ecc, vers );
+}
+
+#else
+// This is the output from dofbit - replace this with your version of the output
+// or use one of the three already generated here. 1,1 and 1,2 and 1,6.
+// I don't know how large they can be and still fit in a NANO.
+
+#define USE_1_1
+
+#ifdef USE_1_1
+unsigned char neccblk1 = 1;
+unsigned char neccblk2 = 0;
+unsigned char datablkw = 19;
+unsigned char eccblkwid = 7;
+unsigned char VERSION = 1;
+unsigned char ECCLEVEL = 1;
+unsigned char WD = 21;
+unsigned char WDB = 3;
+unsigned char strinbuf[63];
+unsigned char qrframe[600];
+unsigned char rlens[22];
+
+#ifndef __AVR__
+#define PROGMEM
+#define memcpy_P memcpy
+#define __LPM(x) *x
+#else
+#include <avr/pgmspace.h>
+#endif
+
+extern const unsigned char framebase[] PROGMEM = {
+0xFE, 0x03, 0xF8, 0x82, 0x02, 0x08, 0xBA, 0x02, 
+0xE8, 0xBA, 0x02, 0xE8, 0xBA, 0x02, 0xE8, 0x82, 
+0x02, 0x08, 0xFE, 0xAB, 0xF8, 0x00, 0x00, 0x00, 
+0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 
+0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 
+0x80, 0x00, 0xFE, 0x00, 0x00, 0x82, 0x00, 0x00, 
+0xBA, 0x00, 0x00, 0xBA, 0x00, 0x00, 0xBA, 0x00, 
+0x00, 0x82, 0x00, 0x00, 0xFE, 0x00, 0x00, 
+};
+
+extern const unsigned char framask[] PROGMEM = {
+0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xF8, 0x10, 0x04, 
+0x00, 0x80, 0x08, 0x1F, 0xF0, 0x7F, 0xC0, 0xFF, 
+0x80, 0xFF, 0x80, 0x7F, 0xC0, 0x1F, 0xF0, 0x03, 
+0xFE, 0x00, 0x3F, 0xE0, 0x00, 
+};
+
+#endif
+
+#ifdef USE_1_2
+unsigned char neccblk1 = 1;
+unsigned char neccblk2 = 0;
+unsigned char datablkw = 34;
+unsigned char eccblkwid = 10;
+unsigned char VERSION = 2;
+unsigned char ECCLEVEL = 1;
+unsigned char WD = 25;
+unsigned char WDB = 4;
+unsigned char strinbuf[100];
+unsigned char qrframe[600];
+unsigned char rlens[26];
+
+#ifndef __AVR__
+#define PROGMEM
+#define memcpy_P memcpy
+#define __LPM(x) *x
+#else
+#include <avr/pgmspace.h>
+#endif
+
+extern const unsigned char framebase[] PROGMEM = {
+0xFE, 0x00, 0x3F, 0x80, 0x82, 0x00, 0x20, 0x80, 
+0xBA, 0x00, 0x2E, 0x80, 0xBA, 0x00, 0x2E, 0x80, 
+0xBA, 0x00, 0x2E, 0x80, 0x82, 0x00, 0x20, 0x80, 
+0xFE, 0xAA, 0xBF, 0x80, 0x00, 0x00, 0x00, 0x00, 
+0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+0x02, 0x00, 0xF8, 0x00, 0x00, 0x80, 0x88, 0x00, 
+0xFE, 0x00, 0xA8, 0x00, 0x82, 0x00, 0x88, 0x00, 
+0xBA, 0x00, 0xF8, 0x00, 0xBA, 0x00, 0x00, 0x00, 
+0xBA, 0x00, 0x00, 0x00, 0x82, 0x00, 0x00, 0x00, 
+0xFE, 0x00, 0x00, 0x00, 
+};
+
+extern const unsigned char framask[] PROGMEM = {
+0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xF8, 0x10, 0x04, 
+0x00, 0x80, 0x08, 0x00, 0x40, 0x01, 0x00, 0x02, 
+0x00, 0x02, 0x00, 0xFF, 0xC0, 0x7F, 0xF0, 0x1F, 
+0xFE, 0x03, 0xFF, 0xE0, 0x3F, 0xFF, 0x00, 0x07, 
+0xFC, 0x00, 0x0F, 0xF8, 0x00, 0x0F, 0xF8, 0x00, 
+0x00, 
+};
+#endif
+
+#ifdef USE_1_6
+unsigned char neccblk1 = 2;
+unsigned char neccblk2 = 0;
+unsigned char datablkw = 68;
+unsigned char eccblkwid = 18;
+unsigned char VERSION = 6;
+unsigned char ECCLEVEL = 1;
+unsigned char WD = 41;
+unsigned char WDB = 6;
+unsigned char strinbuf[246];
+unsigned char qrframe[600];
+unsigned char rlens[42];
+
+#ifndef __AVR__
+#define PROGMEM
+#define memcpy_P memcpy
+#define __LPM(x) *x
+#else
+#include <avr/pgmspace.h>
+#endif
+
+extern const unsigned char framebase[] PROGMEM = {
+0xFE, 0x00, 0x00, 0x00, 0x3F, 0x80, 0x82, 0x00, 
+0x00, 0x00, 0x20, 0x80, 0xBA, 0x00, 0x00, 0x00, 
+0x2E, 0x80, 0xBA, 0x00, 0x00, 0x00, 0x2E, 0x80, 
+0xBA, 0x00, 0x00, 0x00, 0x2E, 0x80, 0x82, 0x00, 
+0x00, 0x00, 0x20, 0x80, 0xFE, 0xAA, 0xAA, 0xAA, 
+0xBF, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
+0x02, 0x00, 0x00, 0x00, 0xF8, 0x00, 0x00, 0x80, 
+0x00, 0x00, 0x88, 0x00, 0xFE, 0x00, 0x00, 0x00, 
+0xA8, 0x00, 0x82, 0x00, 0x00, 0x00, 0x88, 0x00, 
+0xBA, 0x00, 0x00, 0x00, 0xF8, 0x00, 0xBA, 0x00, 
+0x00, 0x00, 0x00, 0x00, 0xBA, 0x00, 0x00, 0x00, 
+0x00, 0x00, 0x82, 0x00, 0x00, 0x00, 0x00, 0x00, 
+0xFE, 0x00, 0x00, 0x00, 0x00, 0x00, 
+};
+
+extern const unsigned char framask[] PROGMEM = {
+0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xF8, 0x10, 0x04, 
+0x00, 0x80, 0x08, 0x00, 0x40, 0x01, 0x00, 0x02, 
+0x00, 0x02, 0x00, 0x01, 0x00, 0x00, 0x40, 0x00, 
+0x08, 0x00, 0x00, 0x80, 0x00, 0x04, 0x00, 0x00, 
+0x10, 0x00, 0x00, 0x20, 0x00, 0x00, 0x20, 0x00, 
+0x00, 0x10, 0x00, 0x00, 0x04, 0x00, 0x00, 0x00, 
+0x80, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x40, 
+0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x02, 0x00, 
+0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0xFF, 0xC0, 
+0x00, 0x00, 0x7F, 0xF0, 0x00, 0x00, 0x1F, 0xFE, 
+0x00, 0x00, 0x03, 0xFF, 0xE0, 0x00, 0x00, 0x3F, 
+0xFF, 0x00, 0x00, 0x00, 0x07, 0xFC, 0x00, 0x00, 
+0x00, 0x0F, 0xF8, 0x00, 0x00, 0x00, 0x0F, 0xF8, 
+0x00, 0x00, 0x00, 0x00, 
+};
+#endif
+
+#endif
+
