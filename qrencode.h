@@ -9,6 +9,8 @@
 #define USEPRECALC
 #endif
 
+#define USEPRECALC
+
 #ifndef USEPRECALC
 // malloc-ed by initframe, free manually
 extern unsigned char *strinbuf; // string iput buffer
