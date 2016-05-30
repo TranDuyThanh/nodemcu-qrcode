@@ -10,16 +10,10 @@ extern unsigned char eccblkwid;
 extern unsigned char VERSION;
 extern unsigned char ECCLEVEL;
 extern unsigned char WD, WDB;
-#ifndef USEPRECALC
-// These are malloced by initframe
-extern unsigned char *rlens;
-extern unsigned char *framebase;
-extern unsigned char *framask;
-#else
+
 extern unsigned char rlens[];
 extern const unsigned char framebase[];
 extern const unsigned char framask[];
-#endif
 
 //========================================================================
 // Reed Solomon error correction
@@ -217,14 +211,6 @@ static unsigned char ismasked(unsigned char x, unsigned char y)
     }
     bt = y;
     bt += y * y;
-#if 0
-    // bt += y*y;
-    unsigned s = 1;
-    while (y--) {
-        bt += s;
-        s += 2;
-    }
-#endif
     bt >>= 1;
     bt += x;
     return (__LPM(&framask[bt >> 3]) >> (7 - (bt & 7))) & 1;
@@ -504,12 +490,7 @@ void qrencode(void)
     for (i = 0; i < 8; i++) {
         applymask(i);           // returns black-white imbalance
         badness = badcheck();
-#if 0                           //ndef PUREBAD
-        if (badness < WD * WD * 5 / 4) {        // good enough - masks grow in compute complexity
-            best = i;
-            break;
-        }
-#endif
+
         if (badness < mindem) {
             mindem = badness;
             best = i;
