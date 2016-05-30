@@ -2,7 +2,7 @@
 #define memcpy_P memcpy
 #define __LPM(x) *x
 
-#define USE_1_2
+#define USE_1_6
 
 #ifdef USE_1_1
 unsigned char neccblk1 = 1;
