@@ -1,13 +1,7 @@
-#ifndef __AVR__
 #define PROGMEM
 #define memcpy_P memcpy
 #define __LPM(x) *x
 #define pgm_read_word(x) *x
-
-#else
-#include <avr/pgmspace.h>
-#define USEPRECALC
-#endif
 
 extern unsigned char strinbuf[];
 extern unsigned char qrframe[];
