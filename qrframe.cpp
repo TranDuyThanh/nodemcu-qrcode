@@ -2,7 +2,7 @@
 #define memcpy_P memcpy
 #define __LPM(x) *x
 
-#define USE_1_1
+#define USE_1_2
 
 #ifdef USE_1_1
 unsigned char neccblk1 = 1;
@@ -10,7 +10,7 @@ unsigned char neccblk2 = 0;
 unsigned char datablkw = 19;
 unsigned char eccblkwid = 7;
 unsigned char VERSION = 1;
-unsigned char ECCLEVEL = 1;
+unsigned char ECCLEVEL = 4;
 unsigned char WD = 21;
 unsigned char WDB = 3;
 unsigned char strinbuf[63];

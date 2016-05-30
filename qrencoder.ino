@@ -1,5 +1,4 @@
-
-int qrenc(int x, int y);
+int qrenc(const char*);
 
 void setup()
 {
@@ -8,7 +7,7 @@ void setup()
   while(!Serial);
   delay(1000);
 
-  qrenc(1,1);
+  qrenc("hello hihi");
 }
 
 void loop()

@@ -7,9 +7,9 @@
 
 char t_str[32];
 
-int qrenc(int x, int y)
-{
-    strcpy((char *)strinbuf,"test string");
+int qrenc(const char* str) {
+    int x, y;
+    strcpy((char *)strinbuf, str);
     qrencode();
 
     sprintf(t_str,"P1\n%d %d\n", WD, WD);
