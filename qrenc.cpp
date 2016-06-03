@@ -1,13 +1,8 @@
-#include <Arduino.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
-#include "qrencode.h"
+#include "qrenc.h"
 
 char t_str[32];
 
-int qrenc(const char* str) {
+int qrenc (const char* str, void (*f)(int) ) {
     int x, y;
     strcpy((char *)strinbuf, str);
     qrencode();
@@ -16,25 +11,38 @@ int qrenc(const char* str) {
     Serial.print(t_str);
 
     // print PAD
-    for (x = 0; x < WD + 2; x++) Serial.print("0 ");
-    Serial.print("\n");
+    for (x = 0; x < WD + 2; x++) {
+        (*f)(0);
+    }
+    (*f)(10);
 
     for (y = 0; y < WD; y++) {
-        printf("0 "); // print PAD
+        (*f)(0);
 
         for (x = 0; x < WD; x++) {
-            sprintf(t_str,"%d ", QRBIT(x,y) );
-            Serial.print(t_str);
+            (*f)(QRBIT(x,y));
         }
-        printf("0 "); // print PAD
+        (*f)(0);
 
-        Serial.println("");
+        (*f)(10);
     }
 
     // print PAD
-    for (x = 0; x < WD + 2; x++) Serial.print("0 ");
-    Serial.print("\n");
+    for (x = 0; x < WD + 2; x++){
+        (*f)(0);
+    }
 
     return 0;
 }
 
+void printPixel(int x) {
+    if (x == 1) Serial.print("1 ");
+    if (x == 0) Serial.print("0 ");
+    if (x == 10) Serial.println();
+}
+
+int qrencPrintln (const char* msg) {
+    qrenc(msg, &printPixel);
+    Serial.println();
+    return 0;
+}
