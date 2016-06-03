@@ -8,7 +8,7 @@
 int qrenc(const char* inputStr) {
     int x, y;
 
-    initeccsize(1, 100);
+    initeccsize(1, strlen(inputStr));
     initframe();
 
     strcpy((char *)strinbuf,inputStr);

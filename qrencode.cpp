@@ -11,16 +11,9 @@ extern unsigned char VERSION;
 extern unsigned char ECCLEVEL;
 extern unsigned char WD, WDB;
 
-// #ifndef USEPRECALC
-// These are malloced by initframe
 extern unsigned char *rlens;
 extern unsigned char *framebase;
 extern unsigned char *framask;
-// #else
-// extern unsigned char rlens[];
-// extern const unsigned char framebase[];
-// extern const unsigned char framask[];
-// #endif
 
 //========================================================================
 // Reed Solomon error correction
@@ -33,7 +26,6 @@ static unsigned modnn(unsigned x)
     return x;
 }
 
-#ifndef RTGENEXPLOG
 static const unsigned char g0log[256] = {
 0xff,0x00,0x01,0x19,0x02,0x32,0x1a,0xc6,0x03,0xdf,0x33,0xee,0x1b,0x68,0xc7,0x4b,
 0x04,0x64,0xe0,0x0e,0x34,0x8d,0xef,0x81,0x1c,0xc1,0x69,0xf8,0xc8,0x08,0x4c,0x71,
@@ -74,34 +66,8 @@ static const unsigned char g0exp[256] = {
 #define glog(x) __LPM(&g0log[x])
 #define gexp(x) __LPM(&g0exp[x])
 
-#else // generate the log and exp tables - some CPU, much less flash, +512 bytes ram which can be shared
-
-unsigned char g0log[256],g0exp[256];
-#define glog(x) (g0log[x])
-#define gexp(x) (g0exp[x])
-static void gentables() {
-#define GFPOLY (0x11d)
-    unsigned char i,j;
-    g0log[0] = 255;
-    g0exp[255] = 0;
-    j = 1;
-    for (i = 0; i < 255; i++) {
-        g0log[j] = i;
-        g0exp[i] = j;
-        j <<= 1;
-        if (j & 256)
-            j ^= GFPOLY;
-        j &= 255;
-    }
-}
-#endif
-
 static void initrspoly(unsigned char eclen, unsigned char *genpoly) {
     unsigned char i, j;
-
-#ifdef RTGENEXPLOG
-    gentables();
-#endif
 
     genpoly[0] = 1;
     for (i = 0; i < eclen; i++) {
@@ -217,14 +183,6 @@ static unsigned char ismasked(unsigned char x, unsigned char y)
     }
     bt = y;
     bt += y * y;
-#if 0
-    // bt += y*y;
-    unsigned s = 1;
-    while (y--) {
-        bt += s;
-        s += 2;
-    }
-#endif
     bt >>= 1;
     bt += x;
     return (__LPM(&framask[bt >> 3]) >> (7 - (bt & 7))) & 1;

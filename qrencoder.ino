@@ -10,9 +10,7 @@ void setup()
   Serial.println();
   Serial.println();
 
-  Serial.println("Silicon Straits Saigon welcome");
-
-  qrenc("Game start");
+  qrenc("https://moca.vn/moca/qr/scan/464937603788");
 }
 
 void loop(){}
