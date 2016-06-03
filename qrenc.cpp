@@ -5,25 +5,33 @@
 
 #include "qrencode.h"
 
-char t_str[32];
+int qrenc(const char* inputStr) {
+    int x, y;
 
-int qrenc(int x, int y)
-{
-    strcpy((char *)strinbuf,"test string");
+    initeccsize(1, 100);
+    initframe();
+
+    strcpy((char *)strinbuf,inputStr);
     qrencode();
 
-    sprintf(t_str,"P1\n%d %d\n", WD, WD);
-    Serial.print(t_str);
+    Serial.printf("P1\n%d %d\n", WD, WD);
+
+    for (x = 0; x < WD+2; x++) Serial.print("0 ");
+    Serial.println();
 
     for (y = 0; y < WD; y++) {
+        Serial.print("0 ");
         for (x = 0; x < WD; x++) {
-            sprintf(t_str,"%d ", QRBIT(x,y) );
-            Serial.print(t_str);
+            Serial.printf("%d ", QRBIT(x,y));
         }
+        Serial.print("0 ");
 
-        Serial.println("");
+        Serial.println();
     }
 
+    for (x = 0; x < WD+2; x++) Serial.print("0 ");
+
+    freeframe();
     return 0;
 }
 

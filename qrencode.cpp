@@ -10,16 +10,17 @@ extern unsigned char eccblkwid;
 extern unsigned char VERSION;
 extern unsigned char ECCLEVEL;
 extern unsigned char WD, WDB;
-#ifndef USEPRECALC
+
+// #ifndef USEPRECALC
 // These are malloced by initframe
 extern unsigned char *rlens;
 extern unsigned char *framebase;
 extern unsigned char *framask;
-#else
-extern unsigned char rlens[];
-extern const unsigned char framebase[];
-extern const unsigned char framask[];
-#endif
+// #else
+// extern unsigned char rlens[];
+// extern const unsigned char framebase[];
+// extern const unsigned char framask[];
+// #endif
 
 //========================================================================
 // Reed Solomon error correction
@@ -95,8 +96,7 @@ static void gentables() {
 }
 #endif
 
-static void initrspoly(unsigned char eclen, unsigned char *genpoly)
-{
+static void initrspoly(unsigned char eclen, unsigned char *genpoly) {
     unsigned char i, j;
 
 #ifdef RTGENEXPLOG
@@ -280,7 +280,6 @@ static void fillframe(void)
             } while (ismasked(x, y));
         }
     }
-
 }
 
 //========================================================================
@@ -504,12 +503,6 @@ void qrencode(void)
     for (i = 0; i < 8; i++) {
         applymask(i);           // returns black-white imbalance
         badness = badcheck();
-#if 0                           //ndef PUREBAD
-        if (badness < WD * WD * 5 / 4) {        // good enough - masks grow in compute complexity
-            best = i;
-            break;
-        }
-#endif
         if (badness < mindem) {
             mindem = badness;
             best = i;
